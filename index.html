@@ -3,106 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>加密货币全能看板</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <title>全网热门榜 (极速版)</title>
     <style>
         body { background-color: #0e0e0e; color: #e1e1e1; font-family: sans-serif; margin: 0; padding: 20px; }
-        .grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
-        .card { background: #1b1b1b; padding: 15px; border-radius: 12px; border: 1px solid #2b2b2b; }
-        .price { font-size: 26px; font-weight: bold; }
-        .up { color: #0ecb81; }
-        .down { color: #f6465d; }
-        .source { font-size: 10px; color: #555; text-align: right; margin-top: 5px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h1 { color: #FCD535; margin: 0; font-size: 20px; }
+        .refresh-btn { background: #333; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
         
-        /* 错误日志区域 (诊断用) */
-        #debug-log { 
-            color: #ff5555; font-family: monospace; font-size: 12px; 
-            background: #220000; padding: 10px; margin-top: 20px; 
-            border: 1px solid #550000; display: none; 
-        }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+        .card { background: #1b1b1b; padding: 12px; border-radius: 8px; border: 1px solid #333; }
+        
+        .coin-head { display: flex; align-items: center; margin-bottom: 8px; }
+        .logo { width: 20px; height: 20px; margin-right: 8px; border-radius: 50%; }
+        .coin-name { font-weight: bold; font-size: 14px; color: #fff; }
+        
+        .price-row { display: flex; justify-content: space-between; margin-top: 4px; font-size: 14px; }
+        .label { color: #666; font-size: 10px; }
+        .val { font-weight: bold; }
+        .up { color: #0ecb81; }
+        
+        #status { position: fixed; bottom: 0; left: 0; width: 100%; background: #222; color: #666; font-size: 10px; text-align: center; padding: 4px; }
     </style>
 </head>
 <body>
 
-    <h1 style="color: #FCD535;">🚀 实时监控终端 (诊断版)</h1>
-    
-    <div class="grid-container">
-        <div class="card">
-            <div>BTC / USDT (现货)</div>
-            <div class="price" id="price-btc">Loading...</div>
-            <div class="source" id="source-btc">正在连接...</div>
-        </div>
-        
-        <div class="card" style="border-color: #552222;">
-            <div>BTC 合约 (永续)</div>
-            <div class="price" id="price-future">Loading...</div>
-            <div class="source" id="source-future">正在连接...</div>
-        </div>
+    <div class="header">
+        <h1>🔥 热门榜 Top 50</h1>
+        <button class="refresh-btn" onclick="location.reload()">刷新</button>
     </div>
 
-    <div id="debug-log"></div>
+    <div id="card-container" class="grid"></div>
+    <div id="status">准备就绪...</div>
 
     <script>
         // ==========================================
-        // 你的 Worker 地址 (已确认是好的)
+        // 【必填】你的 Worker 地址
         const WORKER_URL = 'https://api.xw31555.workers.dev'; 
         // ==========================================
 
-        const debugEl = document.getElementById('debug-log');
+        const container = document.getElementById('card-container');
+        const statusEl = document.getElementById('status');
+        
+        let activeCoins = [];
 
-        // 显示错误函数
-        function showError(msg) {
-            debugEl.style.display = 'block';
-            debugEl.innerHTML += `<div>❌ ${msg}</div>`;
+        // 1. 初始化
+        async function init() {
+            statusEl.innerText = "正在获取热门榜单...";
+            try {
+                // 获取榜单
+                const res = await fetch(`${WORKER_URL}?type=rank`);
+                activeCoins = await res.json();
+                
+                // 渲染卡片
+                renderCards();
+                
+                // 启动价格轮询 (现在只需要请求2次，而不是100次！)
+                updatePrices();
+                setInterval(updatePrices, 4000); 
+
+            } catch (e) {
+                statusEl.innerText = "初始化失败: " + e.message;
+            }
         }
 
+        // 2. 渲染卡片 (先显示---)
+        function renderCards() {
+            container.innerHTML = '';
+            activeCoins.forEach(coin => {
+                const logo = `https://cryptologos.cc/logos/${lookupName(coin)}-${coin.toLowerCase()}-logo.png`;
+                const html = `
+                    <div class="card">
+                        <div class="coin-head">
+                            <img src="${logo}" class="logo" onerror="this.src='https://cryptologos.cc/logos/bitcoin-btc-logo.png'">
+                            <span class="coin-name">${coin}</span>
+                        </div>
+                        <div class="price-row">
+                            <span class="label">现货</span>
+                            <span class="val" id="spot-${coin}">---</span>
+                        </div>
+                        <div class="price-row">
+                            <span class="label">合约</span>
+                            <span class="val" id="fut-${coin}">---</span>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += html;
+            });
+        }
+
+        // 3. 批量更新价格 (核心升级：一次请求拿所有数据)
         async function updatePrices() {
-            // 1. 获取现货
+            statusEl.innerText = "正在更新价格...";
+            
+            // --- A. 获取全网现货 ---
             try {
-                // 加个随机数 t 防止缓存
-                const res = await fetch(`${WORKER_URL}?type=spot&symbol=BTCUSDT&t=${Date.now()}`);
-                
-                if (!res.ok) throw new Error(`HTTP错误: ${res.status}`);
-                
+                const res = await fetch(`${WORKER_URL}?type=all_spot`);
                 const data = await res.json();
+                const prices = data.prices || {};
                 
-                // 检查是否返回了错误信息
-                if (data.error) {
-                    throw new Error(`Worker返回错误: ${data.error} - ${data.details || ''}`);
-                }
+                activeCoins.forEach(coin => {
+                    const p = prices[coin];
+                    if (p) {
+                        const el = document.getElementById(`spot-${coin}`);
+                        if(el) {
+                            el.innerText = formatPrice(p);
+                            el.className = 'val up';
+                        }
+                    }
+                });
+            } catch(e) { console.log('Spot update error'); }
 
-                // 更新界面
-                const el = document.getElementById('price-btc');
-                el.innerText = parseFloat(data.price).toFixed(2);
-                el.className = 'price ' + (data.source === 'Binance' ? 'up' : 'down'); // 简单变色
-                document.getElementById('source-btc').innerText = `Source: ${data.source}`;
-                
-                // 如果成功了，隐藏错误框
-                debugEl.style.display = 'none';
-
-            } catch (e) {
-                console.error(e);
-                document.getElementById('price-btc').innerText = "Error";
-                showError(`现货获取失败: ${e.message}`);
-            }
-
-            // 2. 获取合约
+            // --- B. 获取全网合约 ---
             try {
-                const res = await fetch(`${WORKER_URL}?type=future&symbol=BTCUSDT&t=${Date.now()}`);
+                const res = await fetch(`${WORKER_URL}?type=all_future`);
                 const data = await res.json();
-                if (data.price) {
-                    document.getElementById('price-future').innerText = parseFloat(data.price).toFixed(2);
-                    document.getElementById('source-future').innerText = `Source: ${data.source}`;
-                }
-            } catch (e) {
-                document.getElementById('price-future').innerText = "Error";
-                // 合约经常超时，不频繁报错干扰
-            }
+                const prices = data.prices || {};
+                
+                activeCoins.forEach(coin => {
+                    const p = prices[coin];
+                    if (p) {
+                        const el = document.getElementById(`fut-${coin}`);
+                        if(el) {
+                            el.innerText = formatPrice(p);
+                            el.className = 'val up';
+                        }
+                    }
+                });
+            } catch(e) { console.log('Future update error'); }
+            
+            statusEl.innerText = "更新完成 " + new Date().toLocaleTimeString();
         }
 
-        // 启动
-        updatePrices();
-        setInterval(updatePrices, 3000); // 3秒刷新一次
+        function formatPrice(p) {
+            return p < 1 ? p.toFixed(5) : (p > 1000 ? p.toFixed(1) : p.toFixed(2));
+        }
+
+        function lookupName(s) {
+            const map = { 'BTC':'bitcoin', 'ETH':'ethereum', 'SOL':'solana', 'BNB':'bnb', 'DOGE':'dogecoin', 'XRP':'xrp', 'ADA':'cardano', 'AVAX':'avalanche', 'SHIB':'shiba-inu', 'DOT':'polkadot', 'TRX':'tron', 'LINK':'chainlink', 'MATIC':'polygon', 'BCH':'bitcoin-cash', 'UNI':'uniswap', 'LTC':'litecoin', 'NEAR':'near-protocol', 'PEPE':'pepe', 'ORDI':'ordi' };
+            return map[s] || 'bitcoin'; 
+        }
+
+        init();
     </script>
 </body>
 </html>
