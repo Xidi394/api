@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>加密货币全能看板</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        /* 页面基础样式 - 暗黑模式 */
+        body { background-color: #0e0e0e; color: #e1e1e1; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; }
+        
+        /* 头部样式 */
+        header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        h1 { margin: 0; font-size: 20px; color: #FCD535; display: flex; align-items: center; }
+        .status-dot { height: 10px; width: 10px; background-color: #00ff00; border-radius: 50%; display: inline-block; margin-right: 8px; box-shadow: 0 0 5px #00ff00; }
+        
+        /* 布局网格 */
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        
+        /* 卡片样式 */
+        .card { background: #1b1b1b; padding: 15px; border-radius: 12px; border: 1px solid #2b2b2b; position: relative; transition: transform 0.2s; }
+        .card:hover { transform: translateY(-2px); border-color: #444; }
+        
+        .card-header { display: flex; align-items: center; margin-bottom: 10px; }
+        .coin-logo { width: 32px; height: 32px; border-radius: 50%; margin-right: 10px; background: #333; }
+        .coin-name { font-weight: bold; font-size: 16px; color: #fff; }
+        .coin-type { font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: auto; text-transform: uppercase; font-weight: bold; }
+        
+        /* 标签颜色 */
+        .tag-spot { background: #333; color: #aaa; }
+        .tag-future { background: #291818; color: #ff5555; border: 1px solid #552222; }
+        .tag-option { background: #132436; color: #33aaff; }
+
+        /* 价格样式 */
+        .price-box { display: flex; align-items: baseline; justify-content: space-between; }
+        .price { font-size: 26px; font-weight: bold; letter-spacing: 0.5px; }
+        .source { font-size: 10px; color: #555; margin-top: 5px; text-align: right; }
+        
+        /* 涨跌颜色 */
+        .up { color: #0ecb81; }
+        .down { color: #f6465d; }
+        
+        /* 图表容器 */
+        #chart-container { width: 100%; height: 400px; background: #1b1b1b; border-radius: 12px; border: 1px solid #333; padding: 10px; box-sizing: border-box; }
+        .chart-controls { margin-bottom: 10px; }
+        button { background: #333; color: #ccc; border: 1px solid #444; padding: 5px 15px; cursor: pointer; border-radius: 4px; }
+        button:hover { background: #444; color: #fff; }
+
+        /* 期权列表 */
+        .option-list { font-size: 12px; color: #888; margin-top: 10px; border-top: 1px solid #333; padding-top: 10px; }
+        .option-item { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1><span class="status-dot"></span> 实时监控终端</h1>
+        <div style="font-size: 12px; color: #666;">自动故障转移: Binance -> OKX -> Bybit</div>
+    </header>
+
+    <div class="grid-container">
+        
+        <div class="card">
+            <div class="card-header">
+                <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.png" class="coin-logo">
+                <span class="coin-name">BTC / USDT</span>
+                <span class="coin-type tag-spot">现货 Spot</span>
+            </div>
+            <div class="price-box">
+                <span class="price" id="price-btc-spot">Loading...</span>
+            </div>
+            <div class="source" id="source-btc-spot">Source: Connecting...</div>
+        </div>
+
+        <div class="card" style="border-color: #552222;">
+            <div class="card-header">
+                <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.png" class="coin-logo">
+                <span class="coin-name">BTC 合约</span>
+                <span class="coin-type tag-future">永续合约</span>
+            </div>
+            <div class="price-box">
+                <span class="price" id="price-btc-future">Loading...</span>
+            </div>
+            <div class="source" id="source-btc-future">Source: Connecting...</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <img src="https://cryptologos.cc/logos/ethereum-eth-logo.png" class="coin-logo">
+                <span class="coin-name">ETH 合约</span>
+                <span class="coin-type tag-future">永续合约</span>
+            </div>
+            <div class="price-box">
+                <span class="price" id="price-eth-future">Loading...</span>
+            </div>
+            <div class="source" id="source-eth-future">Source: Connecting...</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span style="font-size:20px; margin-right:10px;">📊</span>
+                <span class="coin-name">BTC 期权链</span>
+                <span class="coin-type tag-option">Options</span>
+            </div>
+            <div class="option-list" id="option-data">
+                正在获取最近行权价...
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-controls">
+        <span style="color:#888; margin-right: 10px;">K线图表:</span>
+        <button onclick="loadKlines('BTCUSDT')">BTC 现货</button>
+        <button onclick="loadKlines('ETHUSDT')">ETH 现货</button>
+        <button onclick="loadKlines('SOLUSDT')">SOL 现货</button>
+    </div>
+    <div id="chart-container"></div>
+
+    <script>
+        // =================================================================
+        // 【已自动帮你填好】这里是你的 Cloudflare Worker 地址
+        // =================================================================
+        const WORKER_URL = 'https://api.xw31555.workers.dev'; 
+        // =================================================================
+
+
+        // 初始化图表库
+        const chartContainer = document.getElementById('chart-container');
+        const chart = LightweightCharts.createChart(chartContainer, {
+            layout: { background: { color: '#1b1b1b' }, textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#2b2b2b' }, horzLines: { color: '#2b2b2b' } },
+            rightPriceScale: { borderColor: '#2b2b2b' },
+            timeScale: { borderColor: '#2b2b2b' },
+        });
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#0ecb81', downColor: '#f6465d', borderVisible: false, wickUpColor: '#0ecb81', wickDownColor: '#f6465d',
+        });
+
+        // 核心函数：去 Worker 抓数据
+        async function fetchAPI(type, symbol) {
+            try {
+                // 加一个时间戳防止缓存
+                const url = `${WORKER_URL}?type=${type}&symbol=${symbol}&t=${Date.now()}`;
+                const res = await fetch(url);
+                return await res.json();
+            } catch (e) { console.error("Fetch Error:", e); return null; }
+        }
+
+        // 核心函数：更新界面价格
+        async function updatePrices() {
+            // 1. 更新 BTC 现货
+            const btcSpot = await fetchAPI('spot', 'BTCUSDT');
+            updateCard('btc-spot', btcSpot);
+
+            // 2. 更新 BTC 合约 (Future)
+            const btcFut = await fetchAPI('future', 'BTCUSDT');
+            updateCard('btc-future', btcFut);
+
+            // 3. 更新 ETH 合约
+            const ethFut = await fetchAPI('future', 'ETHUSDT');
+            updateCard('eth-future', ethFut);
+            
+            // 4. 更新期权 (Option)
+            const options = await fetchAPI('option', 'BTC');
+            if (options && Array.isArray(options) && options.length > 0) {
+                const listHtml = options.slice(0, 5).map(o => `
+                    <div class="option-item">
+                        <span>${o.symbol}</span>
+                        <span class="up">${parseFloat(o.askPrice || 0).toFixed(2)}</span>
+                    </div>
+                `).join('');
+                document.getElementById('option-data').innerHTML = listHtml;
+            }
+        }
+
+        function updateCard(idBase, data) {
+            if (!data || !data.price) return;
+            const priceEl = document.getElementById(`price-${idBase}`);
+            const sourceEl = document.getElementById(`source-${idBase}`);
+            const oldPrice = parseFloat(priceEl.getAttribute('data-price') || 0);
+            const newPrice = parseFloat(data.price);
+            
+            priceEl.innerText = newPrice.toFixed(2);
+            priceEl.className = `price ${newPrice >= oldPrice ? 'up' : 'down'}`;
+            priceEl.setAttribute('data-price', newPrice);
+            sourceEl.innerText = `Source: ${data.source || 'Unknown'}`;
+        }
+
+        async function loadKlines(symbol) {
+            const data = await fetchAPI('kline', symbol);
+            if (data && Array.isArray(data)) {
+                candleSeries.setData(data);
+                chart.timeScale().fitContent();
+            }
+        }
+
+        loadKlines('BTCUSDT');
+        setInterval(updatePrices, 2000);
+        updatePrices();
+        window.addEventListener('resize', () => {
+            chart.applyOptions({ width: chartContainer.clientWidth });
+        });
+    </script>
+</body>
+</html>
